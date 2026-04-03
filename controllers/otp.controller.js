@@ -7,7 +7,10 @@ class OtpController {
             await mailService.sendOtpMail(email)
             res.json({ status: 200 })
         } catch (error) {
-            next(error)
+            console.error('[sendOtp]', error)
+            return res.json({
+                failure: error.message || 'Failed to send OTP email',
+            })
         }
     }
     async verifyOtp(req, res, next) {
