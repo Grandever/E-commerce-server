@@ -107,7 +107,6 @@ class AdminController {
                 { $limit: +pageSize },
             ]);
 
-            console.log("customers:", customers);
 
             const totalCustomers = await userModel.countDocuments(query);
             const isNext = totalCustomers > skipAmount + +customers.length;
@@ -123,8 +122,6 @@ class AdminController {
             const { searchQuery, filter, page, pageSize } = req.query;
             const skipAmount = (page - 1) * pageSize;
             const query = {};
-            console.log("searchQuery:", searchQuery);
-            console.log(query);
             if (searchQuery) {
                 const escapedSearchQuery = searchQuery.replace(
                     /[.*+?^${}()|[\]\\]/g,
@@ -175,7 +172,6 @@ class AdminController {
                     },
                 },
             ]);
-            console.log("order", orders);
 
             const totalOrders = await orderModel.countDocuments(query);
             const isNext = totalOrders > skipAmount + +orders.length;
@@ -233,7 +229,6 @@ class AdminController {
 
             return res.json({ transactions, isNext })
         } catch (error) {
-            console.log(error)
             next(error);
         }
     }
