@@ -119,9 +119,17 @@ class UserController {
             const userId = req.user._id
             const user = await userModel.findById(userId)
             if (!user) return res.json({ failure: 'User not found' })
+            const { email } = req.body
+            if (email && email !== user.email) {
+                const taken = await userModel.findOne({ email })
+                if (taken) return res.json({ failure: 'Email already in use' })
+            }
             await userModel.findByIdAndUpdate(userId, req.body)
             return res.json({ status: 200 })
         } catch (error) {
+            if (error.code === 11000) {
+                return res.json({ failure: 'Email already in use' })
+            }
             next(error)
         }
     }

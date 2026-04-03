@@ -39,10 +39,11 @@ class MailService {
   }
 
   async verifyOtp(email, otp) {
-    const record = await otpModel.find({ email });
-    if (!record) return { failure: "Record not found" };
-    const lastRecord = record[record.length - 1];
+    const lastRecord = await otpModel.findOne({ email }).sort({ _id: -1 });
     if (!lastRecord) return { failure: "Record not found" };
+    if (!lastRecord.otp || typeof lastRecord.otp !== "string") {
+      return { failure: "Record not found" };
+    }
     if (lastRecord.expireAt < new Date()) return { status: 301 };
 
     const isValid = await bcrypt.compare(otp, lastRecord.otp);
