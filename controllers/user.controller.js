@@ -3,6 +3,8 @@ const productModel = require('../models/product.model')
 const userModel = require('../models/user.model')
 const transactionModel = require('../models/transaction.model')
 const bcrypt = require('bcrypt')
+const { getCustomer } = require('../libs/customer')
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 class UserController {
     // [GET] /user/products
@@ -208,6 +210,50 @@ class UserController {
             next(error)
         }
     }
+
+    async stripeCheckout(req, res, next) {
+        try {
+            const { productId } = req.body
+            const currentUser = req.user
+            const customer = await getCustomer(currentUser._id)
+            const product = await productModel.findById(productId)
+            if (!product) return res.status(404).json({ failure: 'Product not found' })
+
+            const exchangeRate = 12850
+            const amountUsdCents = Math.max(50, Math.round((product.price / exchangeRate) * 100))
+
+            const lineItem = product.stripePriceId
+                ? { price: product.stripePriceId, quantity: 1 }
+                : {
+                      quantity: 1,
+                      price_data: {
+                          currency: 'usd',
+                          unit_amount: amountUsdCents,
+                          product_data: {
+                              name: product.title,
+                              ...(product.image ? { images: [product.image] } : {}),
+                          },
+                      },
+                  }
+
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                customer: customer.id,
+                mode: 'payment',
+                metadata: { productId: product._id.toString(), userId: currentUser._id.toString() },
+                line_items: [lineItem],
+                success_url: `${process.env.CLIENT_URL}/success?productId=${product._id}&userId=${currentUser._id}`,
+                cancel_url: `${process.env.CLIENT_URL}/cancel?productId=${product._id}&userId=${currentUser._id}`,
+            })
+
+            return res.json({ status: 200, checkoutUrl: session.url })
+        } catch (error) {
+            console.log(error)
+
+            next(error)
+        }
+    }
+
     // [PUT] /user/update-profile
     async updateProfile(req, res, next) {
         try {
