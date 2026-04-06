@@ -128,6 +128,7 @@ class UserController {
                 {
                     $project: {
                         'product.title': 1,
+                        'product.image': 1,
                         amount: 1,
                         state: 1,
                         create_time: 1,
@@ -225,16 +226,16 @@ class UserController {
             const lineItem = product.stripePriceId
                 ? { price: product.stripePriceId, quantity: 1 }
                 : {
-                      quantity: 1,
-                      price_data: {
-                          currency: 'usd',
-                          unit_amount: amountUsdCents,
-                          product_data: {
-                              name: product.title,
-                              ...(product.image ? { images: [product.image] } : {}),
-                          },
-                      },
-                  }
+                    quantity: 1,
+                    price_data: {
+                        currency: 'usd',
+                        unit_amount: amountUsdCents,
+                        product_data: {
+                            name: product.title,
+                            ...(product.image ? { images: [product.image] } : {}),
+                        },
+                    },
+                }
 
             const session = await stripe.checkout.sessions.create({
                 payment_method_types: ['card'],
@@ -244,6 +245,9 @@ class UserController {
                 line_items: [lineItem],
                 success_url: `${process.env.CLIENT_URL}/success?productId=${product._id}&userId=${currentUser._id}`,
                 cancel_url: `${process.env.CLIENT_URL}/cancel?productId=${product._id}&userId=${currentUser._id}`,
+                payment_intent_data: {
+                    metadata: { productId: product._id.toString(), userId: currentUser._id.toString() },
+                },
             })
 
             return res.json({ status: 200, checkoutUrl: session.url })
