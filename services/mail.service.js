@@ -1,6 +1,10 @@
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcrypt");
 const otpModel = require("../models/otp.model");
+const otpTemplate = require('../template/otp.template')
+const successTemplate = require('../template/success.template')
+const cancelTemplate = require('../template/cancel.template')
+const updateTemplate = require('../template/update.template')
 
 function normalizeEmail(email) {
   if (!email || typeof email !== "string") return null;
@@ -27,15 +31,14 @@ class MailService {
       throw new Error("Invalid email address");
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit OTP
-    console.log("OTP:", otp, "→", normalized);
+    const otp = Math.floor(100000 + Math.random() * 900000)
 
     const hashedOtp = await bcrypt.hash(otp.toString(), 10);
     await otpModel.deleteMany({ email: normalized });
     await otpModel.create({
       email: normalized,
       otp: hashedOtp,
-      expireAt: new Date(Date.now() + 1 * 60 * 1000),
+      expireAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
     try {
@@ -43,11 +46,7 @@ class MailService {
         from: process.env.SMTP_USER,
         to: normalized,
         subject: `OTP for verification ${new Date().toLocaleString()}`,
-        html: `
-				<h1>Your OTP is ${otp}</h1>
-				<p>OTP will expire in 5 minutes</p>
-				<p><strong>Note:</strong> Do not share this OTP with anyone for security reasons.</p>
-			`,
+        html: otpTemplate(otp),
       });
     } catch (mailErr) {
       await otpModel.deleteMany({ email: normalized });
@@ -59,6 +58,33 @@ class MailService {
         typeof msg === "string" ? msg : "Could not send OTP email"
       );
     }
+  }
+
+  async sendSuccessMail({ user, product }) {
+    await this.transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: user.email,
+      subject: `Order Confirmation ${new Date().toLocaleString()}`,
+      html: successTemplate({ user, product }),
+    })
+  }
+
+  async sendCancelMail({ user, product }) {
+    await this.transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: user.email,
+      subject: `Order Cancelled ${new Date().toLocaleString()}`,
+      html: cancelTemplate({ user, product }),
+    })
+  }
+
+  async sendUpdateMail({ user, product, status }) {
+    await this.transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: user.email,
+      subject: `Order Update ${new Date().toLocaleString()}`,
+      html: updateTemplate({ user, product, status }),
+    })
   }
 
   async verifyOtp(email, otp) {
