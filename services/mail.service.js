@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcrypt");
+const dns = require("dns");
 const otpModel = require("../models/otp.model");
 const otpTemplate = require('../template/otp.template')
 const successTemplate = require('../template/success.template')
@@ -24,6 +25,9 @@ class MailService {
       port: smtpPort,
       secure: false,
       family: 4,
+      lookup: (hostname, options, callback) => {
+        dns.lookup(hostname, { family: 4, all: false }, callback);
+      },
       connectionTimeout: smtpConnectionTimeout,
       greetingTimeout: smtpGreetingTimeout,
       socketTimeout: smtpSocketTimeout,
