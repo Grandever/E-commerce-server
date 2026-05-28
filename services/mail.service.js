@@ -14,10 +14,18 @@ function normalizeEmail(email) {
 
 class MailService {
   constructor() {
+    const smtpPort = Number(process.env.SMTP_PORT || 587);
+    const smtpConnectionTimeout = Number(process.env.SMTP_CONNECTION_TIMEOUT || 10000);
+    const smtpGreetingTimeout = Number(process.env.SMTP_GREETING_TIMEOUT || 10000);
+    const smtpSocketTimeout = Number(process.env.SMTP_SOCKET_TIMEOUT || 15000);
+
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
+      port: smtpPort,
       secure: false,
+      connectionTimeout: smtpConnectionTimeout,
+      greetingTimeout: smtpGreetingTimeout,
+      socketTimeout: smtpSocketTimeout,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASSWORD,
@@ -31,6 +39,7 @@ class MailService {
       throw new Error("Invalid email address");
     }
 
+    const startedAt = Date.now();
     const otp = Math.floor(100000 + Math.random() * 900000)
 
     const hashedOtp = await bcrypt.hash(otp.toString(), 10);
@@ -42,14 +51,33 @@ class MailService {
     });
 
     try {
+      console.log("[mail] Sending OTP", {
+        to: normalized,
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT || 587),
+      });
+
       await this.transporter.sendMail({
         from: process.env.SMTP_USER,
         to: normalized,
         subject: `OTP for verification ${new Date().toLocaleString()}`,
         html: otpTemplate(otp),
       });
+
+      console.log("[mail] OTP sent", {
+        to: normalized,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (mailErr) {
       await otpModel.deleteMany({ email: normalized });
+      console.error("[mail] OTP send failed", {
+        to: normalized,
+        durationMs: Date.now() - startedAt,
+        code: mailErr?.code,
+        command: mailErr?.command,
+        response: mailErr?.response,
+        message: mailErr?.message,
+      });
       const msg =
         mailErr?.response ||
         mailErr?.message ||
