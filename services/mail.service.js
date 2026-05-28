@@ -23,6 +23,7 @@ class MailService {
       host: process.env.SMTP_HOST,
       port: smtpPort,
       secure: false,
+      family: 4,
       connectionTimeout: smtpConnectionTimeout,
       greetingTimeout: smtpGreetingTimeout,
       socketTimeout: smtpSocketTimeout,
