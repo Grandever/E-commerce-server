@@ -1,11 +1,12 @@
-const nodemailer = require("nodemailer");
 const bcrypt = require("bcrypt");
-const dns = require("dns");
+const { Resend } = require("resend");
 const otpModel = require("../models/otp.model");
-const otpTemplate = require('../template/otp.template')
-const successTemplate = require('../template/success.template')
-const cancelTemplate = require('../template/cancel.template')
-const updateTemplate = require('../template/update.template')
+const otpTemplate = require('../template/otp.template');
+const successTemplate = require('../template/success.template');
+const cancelTemplate = require('../template/cancel.template');
+const updateTemplate = require('../template/update.template');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function normalizeEmail(email) {
   if (!email || typeof email !== "string") return null;
@@ -14,40 +15,25 @@ function normalizeEmail(email) {
 }
 
 class MailService {
-  constructor() {
-    const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpConnectionTimeout = Number(process.env.SMTP_CONNECTION_TIMEOUT || 10000);
-    const smtpGreetingTimeout = Number(process.env.SMTP_GREETING_TIMEOUT || 10000);
-    const smtpSocketTimeout = Number(process.env.SMTP_SOCKET_TIMEOUT || 15000);
 
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: smtpPort,
-      secure: false,
-      family: 4,
-      lookup: (hostname, options, callback) => {
-        dns.lookup(hostname, { family: 4, all: false }, callback);
-      },
-      connectionTimeout: smtpConnectionTimeout,
-      greetingTimeout: smtpGreetingTimeout,
-      socketTimeout: smtpSocketTimeout,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
+  async #send({ to, subject, html }) {
+    const { error } = await resend.emails.send({
+      from: process.env.MAIL_FROM,
+      to,
+      subject,
+      html,
     });
+    if (error) throw new Error(error.message);
   }
 
   async sendOtpMail(email) {
     const normalized = normalizeEmail(email);
-    if (!normalized) {
-      throw new Error("Invalid email address");
-    }
+    if (!normalized) throw new Error("Invalid email address");
 
     const startedAt = Date.now();
-    const otp = Math.floor(100000 + Math.random() * 900000)
-
+    const otp = Math.floor(100000 + Math.random() * 900000);
     const hashedOtp = await bcrypt.hash(otp.toString(), 10);
+
     await otpModel.deleteMany({ email: normalized });
     await otpModel.create({
       email: normalized,
@@ -56,14 +42,9 @@ class MailService {
     });
 
     try {
-      console.log("[mail] Sending OTP", {
-        to: normalized,
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-      });
+      console.log("[TOZA O'ZGARISH] Sending OTP", { to: normalized });
 
-      await this.transporter.sendMail({
-        from: process.env.SMTP_USER,
+      await this.#send({
         to: normalized,
         subject: `OTP for verification ${new Date().toLocaleString()}`,
         html: otpTemplate(otp),
@@ -78,46 +59,34 @@ class MailService {
       console.error("[mail] OTP send failed", {
         to: normalized,
         durationMs: Date.now() - startedAt,
-        code: mailErr?.code,
-        command: mailErr?.command,
-        response: mailErr?.response,
         message: mailErr?.message,
       });
-      const msg =
-        mailErr?.response ||
-        mailErr?.message ||
-        "Could not send email. Check SMTP settings.";
-      throw new Error(
-        typeof msg === "string" ? msg : "Could not send OTP email"
-      );
+      throw new Error(mailErr?.message || "Could not send OTP email");
     }
   }
 
   async sendSuccessMail({ user, product }) {
-    await this.transporter.sendMail({
-      from: process.env.SMTP_USER,
+    await this.#send({
       to: user.email,
       subject: `Order Confirmation ${new Date().toLocaleString()}`,
       html: successTemplate({ user, product }),
-    })
+    });
   }
 
   async sendCancelMail({ user, product }) {
-    await this.transporter.sendMail({
-      from: process.env.SMTP_USER,
+    await this.#send({
       to: user.email,
       subject: `Order Cancelled ${new Date().toLocaleString()}`,
       html: cancelTemplate({ user, product }),
-    })
+    });
   }
 
   async sendUpdateMail({ user, product, status }) {
-    await this.transporter.sendMail({
-      from: process.env.SMTP_USER,
+    await this.#send({
       to: user.email,
       subject: `Order Update ${new Date().toLocaleString()}`,
       html: updateTemplate({ user, product, status }),
-    })
+    });
   }
 
   async verifyOtp(email, otp) {
@@ -127,6 +96,7 @@ class MailService {
     const lastRecord = await otpModel
       .findOne({ email: normalized })
       .sort({ _id: -1 });
+
     if (!lastRecord) return { failure: "Record not found" };
     if (!lastRecord.otp || typeof lastRecord.otp !== "string") {
       return { failure: "Record not found" };
